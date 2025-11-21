@@ -1,0 +1,35 @@
+# Build artifacts
+build/
+isodir/
+*.o
+*.bin
+*.iso
+*.iso.lock
+
+# Object files
+*.o
+
+# Kernel binary
+kernel.bin
+
+# ISO images
+*.iso
+
+# Temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+*.code-workspace
+
+# WSL setup scripts (temporary)
+wsl-setup.sh
+
+# Logs
+*.log
+
