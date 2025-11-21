@@ -2,6 +2,7 @@
 #include "io.h"
 #include "vga.h"
 #include "arabic_font.h"
+#include "arabic_shaping.h"
 
 #define NULL ((void*)0)
 
@@ -181,35 +182,108 @@ static uint8_t arabic_unicode_to_vga(uint32_t unicode) {
     return 0; // Not found, return 0 (null)
 }
 
-// Optimized UTF-8 string writer with fast-path for ASCII
+// Buffer for decoded Unicode characters (max 256 characters)
+#define MAX_DECODED_CHARS 256
+static uint32_t decoded_buffer[MAX_DECODED_CHARS];
+static uint8_t shaped_buffer[MAX_DECODED_CHARS];  // Shaped character codes
+
+// Two-pass rendering: decode UTF-8, then apply shaping and render
 void vga_write_utf8_string(const char* utf8_string) {
     const char* ptr = utf8_string;
+    size_t decoded_count = 0;
     
-    while (*ptr != '\0') {
-        // Fast-path: Check if next character is ASCII (most common case)
+    // === PASS 1: Decode UTF-8 to Unicode buffer ===
+    while (*ptr != '\0' && decoded_count < MAX_DECODED_CHARS) {
+        // Fast-path: ASCII characters
         if ((*ptr & 0x80) == 0) {
-            // ASCII character, write directly without UTF-8 decoding
-            vga_putchar(*ptr);
+            decoded_buffer[decoded_count++] = (uint8_t)*ptr;
             ptr++;
             continue;
         }
         
         // Multi-byte UTF-8 sequence
         uint32_t unicode = utf8_to_unicode_optimized(&ptr);
-        
-        if (unicode == 0) {
-            // Invalid UTF-8, skip
-            continue;
+        if (unicode != 0) {
+            decoded_buffer[decoded_count++] = unicode;
         }
+    }
+    
+    if (decoded_count == 0) {
+        return;  // Nothing to render
+    }
+    
+    // === PASS 2: Apply shaping and render ===
+    // Process characters in logical order (left-to-right in memory)
+    // But render right-to-left for Arabic text
+    
+    size_t shaped_count = 0;
+    for (size_t i = 0; i < decoded_count; i++) {
+        uint32_t unicode = decoded_buffer[i];
+        uint8_t base_code = 0;
+        uint8_t final_code = 0;
         
-        // Try to map Arabic Unicode to VGA font code
-        uint8_t vga_code = arabic_unicode_to_vga(unicode);
-        if (vga_code != 0) {
-            vga_putchar((char)vga_code);
+        // Check if it's Arabic Unicode
+        base_code = arabic_unicode_to_vga(unicode);
+        
+        if (base_code != 0 && is_arabic_base_code(base_code)) {
+            // Arabic character - check for ligatures first
+            if (i + 1 < decoded_count) {
+                uint32_t next_unicode = decoded_buffer[i + 1];
+                uint8_t next_base = arabic_unicode_to_vga(next_unicode);
+                
+                // Check for lam-alef ligature
+                uint8_t ligature = check_ligature(base_code, next_base);
+                if (ligature != 0) {
+                    // Found ligature - use ligature code and skip next character
+                    shaped_buffer[shaped_count++] = ligature;
+                    i++;  // Skip next character (already processed as ligature)
+                    continue;
+                }
+            }
+            
+            // No ligature - select appropriate form
+            uint8_t prev_base = 0;
+            uint8_t next_base = 0;
+            
+            // Get previous character base code
+            if (i > 0) {
+                uint32_t prev_unicode = decoded_buffer[i - 1];
+                prev_base = arabic_unicode_to_vga(prev_unicode);
+                if (!is_arabic_base_code(prev_base)) {
+                    prev_base = 0;  // Not Arabic
+                }
+            }
+            
+            // Get next character base code
+            if (i + 1 < decoded_count) {
+                uint32_t next_unicode = decoded_buffer[i + 1];
+                next_base = arabic_unicode_to_vga(next_unicode);
+                if (!is_arabic_base_code(next_base)) {
+                    next_base = 0;  // Not Arabic
+                }
+            }
+            
+            // Select form based on context
+            arabic_form_t form = select_form(prev_base, base_code, next_base);
+            
+            // Map to form code
+            final_code = get_form_code(base_code, form);
+        } else if (unicode < 128) {
+            // ASCII character
+            final_code = (uint8_t)unicode;
         } else {
-            // Character not in mapping, write '?' as fallback
-            vga_putchar('?');
+            // Unknown character - use '?' as fallback
+            final_code = '?';
         }
+        
+        shaped_buffer[shaped_count++] = final_code;
+    }
+    
+    // === RENDER: Write shaped characters to screen ===
+    // For RTL text, we render right-to-left, so reverse the buffer
+    // But since VGA is already in RTL mode, we render in order
+    for (size_t i = 0; i < shaped_count; i++) {
+        vga_putchar((char)shaped_buffer[i]);
     }
 }
 

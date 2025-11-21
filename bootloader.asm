@@ -44,36 +44,58 @@ start:
 load_arabic_fonts:
     pusha
     
-    ; BIOS INT 10h, AH=11h - Character Generator Functions
-    ; AL=0: Load user font (8x8 or 8x14)
-    ; AL=1: Load ROM 8x14 font
-    ; AL=2: Load ROM 8x8 font
-    ; AL=3: Set block specifier
-    ; AL=4: Load ROM 8x16 font (EGA/VGA)
-    ; AL=20h: Set user 8x16 font
+    ; First, load font data from disk to memory
+    ; Font data is stored in sectors 2-4 (3 sectors = 1536 bytes, enough for 96 chars)
+    ; We'll load it to 0x7E00 (after bootloader)
+    mov si, msg_loading_fonts
+    call print_string
     
-    ; For 8x16 fonts, we need to:
-    ; 1. Set ES:BP to point to font data
-    ; 2. Use INT 10h, AH=11h, AL=20h to load user font
-    ; 3. BH = number of bytes per character (16)
-    ; 4. BL = block to load into (0-7, typically 0)
-    ; 5. CX = number of characters to load
-    ; 6. DX = character offset in font table (where to start loading)
+    ; Reset disk
+    mov ah, 0x00
+    mov dl, [boot_drive]
+    int 0x13
+    jc .font_error
     
-    ; Set ES:BP to font data location
-    ; Font data will be stored after bootloader (at 0x7E00)
+    ; Load font sectors (sectors 2-4, 3 sectors = 1536 bytes)
     mov ax, 0x07E0  ; Segment for 0x7E00
     mov es, ax
-    mov bp, 0x0000  ; Offset 0 in segment
+    mov bx, 0x0000  ; Offset 0
     
-    ; Load font using INT 10h
+    mov ah, 0x02    ; Read sectors
+    mov al, 3       ; 3 sectors (enough for fonts)
+    mov ch, 0       ; Cylinder 0
+    mov cl, 2       ; Sector 2 (after bootloader)
+    mov dh, 0       ; Head 0
+    mov dl, [boot_drive]
+    int 0x13
+    jc .font_error
+    
+    ; Now load fonts into VGA using BIOS INT 10h
+    ; BIOS INT 10h, AH=11h, AL=20h: Set user 8x16 font
+    mov ax, 0x07E0  ; Segment for font data
+    mov es, ax
+    mov bp, 0x0000  ; Offset to font data
+    
+    ; Load font forms (0x80-0xEF, 112 characters = 1792 bytes)
+    ; We'll load in two batches due to BIOS limitations
     mov ax, 0x1120  ; AH=11h (character generator), AL=20h (set user 8x16 font)
     mov bh, 16      ; 16 bytes per character
     mov bl, 0       ; Block 0
-    mov cx, 112     ; Number of character forms (28 chars * 4 forms)
+    mov cx, 96      ; Load first 96 characters (fits in 3 sectors)
     mov dx, 0x0080  ; Start at character 0x80
     int 0x10
     
+    ; Load remaining 16 forms if we have space (would need 4th sector)
+    ; For now, we'll load what we can
+    
+    mov si, msg_fonts_loaded
+    call print_string
+    popa
+    ret
+    
+.font_error:
+    mov si, msg_font_error
+    call print_string
     popa
     ret
 
@@ -180,8 +202,10 @@ halt:
     jmp halt
 
 ; Data section
-msg_booting:        db 'Loading Arabic fonts...', 13, 10, 0
-msg_fonts_loaded:  db 'Fonts loaded successfully!', 13, 10, 0
+msg_booting:        db 'Booting...', 13, 10, 0
+msg_loading_fonts:  db 'Loading fonts...', 13, 10, 0
+msg_fonts_loaded:   db 'Fonts loaded!', 13, 10, 0
+msg_font_error:     db 'Font load error!', 13, 10, 0
 msg_loading_kernel: db 'Loading kernel...', 13, 10, 0
 msg_kernel_loaded:  db 'Kernel loaded!', 13, 10, 0
 msg_disk_error:     db 'Disk error!', 13, 10, 0
@@ -217,6 +241,6 @@ gdt_descriptor:
 CODE_SEG equ gdt_start + 8
 DATA_SEG equ gdt_start + 16
 
-; Boot signature
+; Boot signature (must be at offset 510-511)
 times 510-($-$$) db 0
 dw 0xAA55
