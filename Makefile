@@ -29,11 +29,44 @@ OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS)
 
 # Output
 KERNEL = $(BUILD_DIR)/kernel.bin
+BOOTLOADER = $(BUILD_DIR)/bootloader.bin
+FONT_BIN = $(BUILD_DIR)/fonts.bin
+DISK_IMG = $(BUILD_DIR)/disk.img
 ISO = $(BUILD_DIR)/cognica-os.iso
 
-.PHONY: all clean run iso
+.PHONY: all clean run iso bootloader disk
 
-all: $(KERNEL)
+all: $(KERNEL) bootloader
+
+# Build bootloader (16-bit, raw binary)
+bootloader: $(BOOTLOADER)
+
+$(BOOTLOADER): bootloader.asm
+	@echo "Building bootloader..."
+	@mkdir -p $(BUILD_DIR)
+	$(ASM) -f bin -o $@ $<
+	@echo "Bootloader size: $$(stat -f%z $@ 2>/dev/null || stat -c%s $@ 2>/dev/null) bytes"
+
+# Generate font binary from C source
+$(FONT_BIN): arabic_font_data.c embed_fonts.py
+	@echo "Generating font binary..."
+	@mkdir -p $(BUILD_DIR)
+	python3 embed_fonts.py arabic_font_data.c $@
+
+# Create bootable disk image with bootloader + fonts + kernel
+disk: $(BOOTLOADER) $(FONT_BIN) $(KERNEL)
+	@echo "Creating bootable disk image..."
+	@mkdir -p $(BUILD_DIR)
+	# Create empty disk image (10MB)
+	dd if=/dev/zero of=$(DISK_IMG) bs=1024 count=10240 2>/dev/null || \
+		dd if=/dev/zero of=$(DISK_IMG) bs=1M count=10 2>/dev/null
+	# Write bootloader to first sector
+	dd if=$(BOOTLOADER) of=$(DISK_IMG) bs=512 count=1 conv=notrunc 2>/dev/null
+	# Write font data to sectors 2-4
+	dd if=$(FONT_BIN) of=$(DISK_IMG) bs=512 seek=1 conv=notrunc 2>/dev/null
+	# Write kernel starting at sector 5
+	dd if=$(KERNEL) of=$(DISK_IMG) bs=512 seek=4 conv=notrunc 2>/dev/null
+	@echo "Disk image created: $(DISK_IMG)"
 
 $(KERNEL): $(OBJECTS) linker.ld
 	@echo "Linking kernel..."
