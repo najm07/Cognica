@@ -1,15 +1,22 @@
 #ifndef VGA_H
 #define VGA_H
 
-// Type definitions for kernel (no stdlib)
+// Type definitions for kernel (no stdlib) - 64-bit
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
-typedef unsigned long uint32_t;
-typedef unsigned long size_t;
+typedef unsigned int uint32_t;
+typedef unsigned long uint64_t;
+typedef unsigned long size_t;  // 64-bit size_t
 
 // VGA text mode constants
 #define VGA_WIDTH  80
 #define VGA_HEIGHT 25
+
+// Text direction modes
+enum vga_text_direction {
+    VGA_DIRECTION_LTR = 0,  // Left-to-Right (default)
+    VGA_DIRECTION_RTL = 1   // Right-to-Left
+};
 
 // VGA color palette
 enum vga_color {
@@ -66,6 +73,11 @@ size_t vga_get_column(void);
 
 // Set cursor position
 void vga_set_cursor(size_t row, size_t column);
+
+// RTL support functions
+void vga_set_text_direction(enum vga_text_direction direction);
+enum vga_text_direction vga_get_text_direction(void);
+void vga_set_rtl_mode(int enabled);  // Convenience function: 1 = RTL, 0 = LTR
 
 #endif
 
