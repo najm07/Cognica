@@ -16,14 +16,14 @@ if grep -qEi "(Microsoft|WSL)" /proc/version &> /dev/null ; then
     # Try to use WSLg (Windows 11) or fallback to VNC
     if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
         echo "Using GUI display..."
-        qemu-system-i386 -cdrom build/cognica-os.iso -m 128M
+        qemu-system-x86_64 -cdrom build/cognica-os.iso -m 128M
     else
         echo "No display available. Starting with VNC server on localhost:1"
         echo "Connect with: vncviewer localhost:1"
-        qemu-system-i386 -cdrom build/cognica-os.iso -m 128M -vnc :1
+        qemu-system-x86_64 -cdrom build/cognica-os.iso -m 128M -vnc :1
     fi
 else
     # Native Linux
-    qemu-system-i386 -cdrom build/cognica-os.iso -m 128M
+    qemu-system-x86_64 -cdrom build/cognica-os.iso -m 128M
 fi
 

@@ -4,14 +4,14 @@
 
 ### Option 1: Direct GUI (Windows 11 with WSLg)
 ```powershell
-wsl bash -c "cd /mnt/c/Users/mehdi/source/repos/Cognica && qemu-system-i386 -cdrom build/cognica-os.iso -m 128M"
+wsl bash -c "cd /mnt/c/Users/mehdi/source/repos/Cognica && qemu-system-x86_64 -cdrom build/cognica-os.iso -m 128M"
 ```
 A QEMU window should open showing your kernel booting.
 
 ### Option 2: VNC Server (Works on all Windows versions)
 ```powershell
 # Start QEMU with VNC
-wsl bash -c "cd /mnt/c/Users/mehdi/source/repos/Cognica && qemu-system-i386 -cdrom build/cognica-os.iso -m 128M -vnc :1 -daemonize"
+wsl bash -c "cd /mnt/c/Users/mehdi/source/repos/Cognica && qemu-system-x86_64 -cdrom build/cognica-os.iso -m 128M -vnc :1 -daemonize"
 
 # Then connect with a VNC viewer:
 # - Install TightVNC Viewer or RealVNC Viewer
@@ -35,7 +35,7 @@ When the kernel boots, you should see:
 ## Stopping QEMU
 
 ```powershell
-wsl bash -c "pkill -f qemu-system-i386"
+  wsl bash -c "pkill -f qemu-system-x86_64"
 ```
 
 ## Troubleshooting

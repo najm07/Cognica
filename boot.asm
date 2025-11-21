@@ -470,12 +470,133 @@ setup_paging:
     
     ret
 
-; Load Arabic fonts using direct VGA register manipulation
-; NOTE: This function is disabled because VGA font loading in protected mode
-; text mode is problematic and causes hangs. Fonts will be loaded in 64-bit mode instead.
+; Load Arabic fonts using VGA register manipulation in text mode
+; NOTE: This function is disabled - writing to 0xA0000 in text mode causes display corruption
+; Font loading will be handled in 64-bit mode via vga_load_arabic_font()
 load_arabic_fonts_bios:
-    ; Skip font loading in 32-bit mode - causes hangs
-    ; The font loading will be done in 64-bit mode via vga_load_arabic_font()
+    ; Disabled - causes display corruption
+    ; The issue is that 0xA0000 is graphics memory and writing to it in text mode
+    ; corrupts the display. Font loading needs a different approach.
+    ret
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push esi
+    push edi
+    
+    ; Save current VGA state
+    mov dx, VGA_SEQ_INDEX
+    mov al, 0x02             ; Sequencer register 2 (map mask)
+    out dx, al
+    inc dx
+    in al, dx
+    push eax                 ; Save map mask
+    
+    mov dx, VGA_GC_INDEX
+    mov al, 0x04             ; Graphics controller register 4 (read plane select)
+    out dx, al
+    inc dx
+    in al, dx
+    push eax                 ; Save read plane
+    
+    mov al, 0x05             ; Graphics controller register 5 (mode)
+    mov dx, VGA_GC_INDEX
+    out dx, al
+    inc dx
+    in al, dx
+    push eax                 ; Save mode
+    
+    mov al, 0x06             ; Graphics controller register 6 (misc)
+    mov dx, VGA_GC_INDEX
+    out dx, al
+    inc dx
+    in al, dx
+    push eax                 ; Save misc
+    
+    ; Configure VGA to access font memory (plane 2 - character generator)
+    ; Set sequencer to map plane 2
+    mov dx, VGA_SEQ_INDEX
+    mov al, 0x02
+    out dx, al
+    inc dx
+    mov al, 0x04             ; Enable plane 2 only (character generator)
+    out dx, al
+    
+    ; Set graphics controller for font access
+    mov dx, VGA_GC_INDEX
+    mov al, 0x04
+    out dx, al
+    inc dx
+    mov al, 0x02             ; Read plane 2
+    out dx, al
+    
+    mov al, 0x05
+    mov dx, VGA_GC_INDEX
+    out dx, al
+    inc dx
+    mov al, 0x00             ; Write mode 0
+    out dx, al
+    
+    mov al, 0x08             ; Bit mask register
+    mov dx, VGA_GC_INDEX
+    out dx, al
+    inc dx
+    mov al, 0xFF             ; All bits
+    out dx, al
+    
+    ; In text mode, font memory is mapped differently
+    ; We need to use the character generator access method
+    ; Font memory is accessible through plane 2 at 0xA0000 when configured
+    ; But we need to ensure 0xA0000 is mapped in our page tables
+    mov esi, arabic_font_table  ; Source font data
+    mov edi, 0xA0000 + (0x80 * 32)  ; Destination: character 0x80, 32 bytes per char
+    mov ecx, 28                  ; 28 characters
+    mov edx, 16                  ; 16 bytes per character
+    
+.load_char_loop:
+    push ecx
+    mov ecx, edx
+    rep movsb                   ; Copy 16 bytes
+    add edi, 16                 ; Skip to next character slot (32 bytes total)
+    pop ecx
+    loop .load_char_loop
+    
+    ; Restore VGA state
+    mov dx, VGA_SEQ_INDEX
+    mov al, 0x02
+    out dx, al
+    inc dx
+    pop eax
+    out dx, al               ; Restore map mask
+    
+    mov dx, VGA_GC_INDEX
+    mov al, 0x04
+    out dx, al
+    inc dx
+    pop eax
+    out dx, al               ; Restore read plane
+    
+    mov al, 0x05
+    mov dx, VGA_GC_INDEX
+    out dx, al
+    inc dx
+    pop eax
+    out dx, al               ; Restore mode
+    
+    mov al, 0x06
+    mov dx, VGA_GC_INDEX
+    out dx, al
+    inc dx
+    pop eax
+    out dx, al               ; Restore misc
+    
+    pop edi
+    pop esi
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
     ret
 
 enter_long_mode:
@@ -615,9 +736,9 @@ enter_long_mode:
     call debug_wait_enter
 .cr0_verified:
     
-    ; Load Arabic fonts using BIOS before entering 64-bit mode
-    ; NOTE: VGA font loading in protected mode text mode is problematic
-    ; The font loading is skipped for now - fonts will be loaded in 64-bit mode instead
+    ; Load Arabic fonts using VGA graphics mode switching
+    ; NOTE: Currently disabled - causes display corruption
+    ; Font loading will be handled in 64-bit mode instead
     push esi
     mov esi, debug_msg_loading_fonts
     call debug_print_str
@@ -625,7 +746,7 @@ enter_long_mode:
     call debug_wait_enter
     pop esi
     
-    ; Skip font loading in 32-bit mode - it causes hangs
+    ; Skip font loading - causes display corruption
     ; call load_arabic_fonts_bios
     
     push esi

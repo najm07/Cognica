@@ -127,8 +127,9 @@ function Build-Kernel {
         if (Test-Path $file) {
             Write-Info "  Compiling $file..."
             $objectFile = "build\$($file.Replace('.c', '.o'))"
-            & gcc -m32 -nostdlib -nostdinc -fno-builtin -fno-stack-protector `
+            & gcc -m64 -nostdlib -nostdinc -fno-builtin -fno-stack-protector `
                   -nostartfiles -nodefaultlibs -Wall -Wextra -c `
+                  -mno-red-zone -mno-mmx -mno-sse -mno-sse2 `
                   -o $objectFile $file
             if ($LASTEXITCODE -ne 0) {
                 throw "Failed to compile $file"
@@ -143,7 +144,7 @@ function Build-Kernel {
         if (Test-Path $file) {
             Write-Info "  Assembling $file..."
             $objectFile = "build\$($file.Replace('.asm', '.o'))"
-            & nasm -f elf32 -o $objectFile $file
+            & nasm -f elf64 -o $objectFile $file
             if ($LASTEXITCODE -ne 0) {
                 throw "Failed to assemble $file"
             }
@@ -156,13 +157,13 @@ function Build-Kernel {
     
     # Try to use cross-compiler linker if available, otherwise MinGW ld
     $linkerFound = $false
-    $crossLinkers = @("i686-elf-ld", "x86_64-elf-ld", "i586-elf-ld")
+    $crossLinkers = @("x86_64-elf-ld", "i686-elf-ld", "i586-elf-ld")
     
     foreach ($linkerName in $crossLinkers) {
         try {
             $linker = Get-Command $linkerName -ErrorAction Stop
             Write-Info "  Using cross-compiler linker: $linkerName"
-            & $linkerName -m elf_i386 -T linker.ld -o "build\kernel.bin" $objects
+            & $linkerName -m elf_x86_64 -T linker.ld -o "build\kernel.bin" $objects
             if ($LASTEXITCODE -eq 0) {
                 $linkerFound = $true
                 break
@@ -179,7 +180,7 @@ function Build-Kernel {
         Write-Warning "  2. Or use WSL with: sudo apt-get install gcc-multilib nasm grub-pc-bin"
         Write-Warning ""
         Write-Warning "Attempting with MinGW ld (will likely fail)..."
-        & ld -m elf_i386 -T linker.ld -o "build\kernel.bin" $objects
+        & ld -m elf_x86_64 -T linker.ld -o "build\kernel.bin" $objects
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to link kernel. MinGW ld does not support ELF format. Please install a cross-compiler or use WSL."
         }
@@ -268,7 +269,7 @@ try {
             Write-Info "Starting QEMU..."
             $qemuUrl = "https://www.qemu.org/"
             Write-Warning "Note: QEMU may not be installed. Install from: $qemuUrl"
-            & qemu-system-i386 -cdrom "build\cognica-os.iso"
+            & qemu-system-x86_64 -cdrom "build\cognica-os.iso" -m 128M
         } else {
             Write-Warning "ISO not found. Create it first with: .\build.ps1 -Iso"
         }
